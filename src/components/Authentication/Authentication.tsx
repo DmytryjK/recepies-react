@@ -1,7 +1,8 @@
 import {FC} from 'react';
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, reload } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult  } from "firebase/auth";
+import { auth, provider } from '../../firebase/firebase';
 
 import { useState, useEffect, useRef } from 'react';
 import { createUser } from "./AuthenticationSlice";
@@ -30,27 +31,43 @@ const Authentication: FC = () => {
     const [isRegisterByFb, setIsRegisterByFb] = useState<boolean>(false);
 
     const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+    
+
+    const [loading, setLoading] = useState<boolean>(false);
 
     const loginByEmailPassInput = useRef<HTMLInputElement>(null);
 
     const dispatch = useAppDispatch();
-    const auth = getAuth();
 
     useEffect(() => {
         if (localStorage.getItem('user')) navigate("/");
+        if (sessionStorage.getItem('loading') === 'true') setLoading(true);
     }, []);
+
+    useEffect(() => {
+        console.log(loading);
+    }, [loading])
+
+    useEffect(() => {
+        isAuthorized && navigate('/');
+    }, [isAuthorized]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged((user) => {
             if (user) {
                 setIsAuthorized(true);
+                sessionStorage.clear();
+                setLoading(false);
                 if (user.uid && user.email) {
                     const userToSave = { uid: user.uid, email: user.email };
                     localStorage.setItem('user', JSON.stringify(userToSave));
                     dispatch(createUser(userToSave));
                 }
+                getRedirectResult(auth)
+                    .then()
             } else {
                 localStorage.clear();
+                sessionStorage.clear();
                 console.log('try to login');
                 setIsAuthorized(false);
             }
@@ -61,15 +78,15 @@ const Authentication: FC = () => {
         return () => {
           unsubscribe(); // Отписываемся от слушателя при размонтировании компонента
         };
-    }, []);
+    }, [isAuthorized]);
 
     const handleCreateUser = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
         createUserWithEmailAndPassword(auth, inputMail, inputPass)
         .then(({user}) => {
-            navigate('/');
-            setIsRegisterOpen(false);
+            setIsAuthorized(true);
+            // setIsRegisterOpen(false);
         })
         .catch((error) => {
             const errorCode = error.code;
@@ -82,12 +99,23 @@ const Authentication: FC = () => {
     
         signInWithEmailAndPassword(auth, inputMail, inputPass)
             .then(({user}) => {
-                navigate('/');
+                setIsAuthorized(true);
             })
             .catch((error) => {
                 const errorCode = error.code;
                 const errorMessage = error.message;
             });
+    }
+
+    const handleSignInByGoogle = async() => {
+        setIsLoginWindowShow(false); 
+        setIsRegisterWindowShow(true); 
+        setIsRegisterByGoogle(true);
+        
+        sessionStorage.setItem('loading', 'true');        
+        setLoading(true);
+
+        signInWithRedirect(auth, provider)
     }
 
     const handleMailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -450,7 +478,7 @@ const Authentication: FC = () => {
                         <li className="authentication__block-item">
                             <button 
                                 className="authentication__block-btn"
-                                onClick={() => {setIsLoginWindowShow(false); setIsRegisterWindowShow(true); setIsRegisterByGoogle(true)}}>
+                                onClick={handleSignInByGoogle}>
                                 <span className="authentication__block-text">
                                     Зареєструватись через Google
                                     <span className="authentication__block-decorative block-google"></span>
@@ -477,12 +505,11 @@ const Authentication: FC = () => {
         )
     }
 
-    const windowForAuth = (isLoginByEmail && LoginByEmail()) || (isLoginByGoogle && LoginByGoogle()) || (isRegisterByEmail && SignUpByEmail());
-    // const windowsRegister = isRegisterByEmail && SignUpByEmail();
+    const windowForAuth = (isLoginByEmail && LoginByEmail()) || (isRegisterByEmail && SignUpByEmail()) || (isRegisterByGoogle && LoginByGoogle());
 
     return (
         <div className="authentication__wrapper">
-            {isLoginWindowShow || isRegisterWindowShow ? windowForAuth : ChoiceAuthWindow()}
+            {loading ? <div>Loading...</div> : isLoginWindowShow || isRegisterWindowShow ? windowForAuth : ChoiceAuthWindow()} 
         </div>
     )
 }

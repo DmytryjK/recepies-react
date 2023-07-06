@@ -6,6 +6,7 @@ export interface Recepie {
 	img?: string;
 	description?: string;
 	favorites: boolean;
+	category: string;
 }
 
 export interface Recepies {
